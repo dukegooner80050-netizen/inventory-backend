@@ -1,0 +1,263 @@
+<?php
+
+namespace App\Http\Controllers;
+use App\Models\User;
+use App\Traits\ActivityLogger;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+
+class UserController extends Controller
+{
+    use ActivityLogger;
+
+    public function index()
+    {
+        return response()->json(User::all());
+    }
+
+    public function show($id)
+{
+    $user = User::find($id);
+
+    if (!$user) {
+        return response()->json([
+            'message' => 'User not found.'
+        ], 404);
+    }
+
+    return response()->json($user);
+}
+
+public function store(Request $request)
+{
+    $validated = $request->validate([
+        'full_name' => 'required|string|max:255',
+        'username'  => 'required|string|max:255|unique:users,username',
+        'password'  => 'required|min:6',
+        'role'      => 'required|in:amo,department_head,admin,instructor,cashier',
+    ]);
+
+    $user = User::create([
+        'full_name' => $validated['full_name'],
+        'username'  => $validated['username'],
+        'password'  => Hash::make($validated['password']),
+        'role'      => $validated['role'],
+    ]);
+
+    $this->logActivity(
+    request()->user()->idUsers,
+    "Created User '{$user->full_name}'"
+);
+
+    return response()->json([
+        'message' => 'User created successfully.',
+        'user' => $user,
+    ], 201);
+}
+
+public function update(Request $request, $id)
+{
+    
+    $user = User::find($id);
+
+    if (!$user) {
+        return response()->json([
+            'message' => 'User not found.'
+        ], 404);
+    }
+
+    $validated = $request->validate([
+        'full_name' => 'required|string|max:255',
+        'username'  => 'required|string|max:255|unique:users,username,' . $id . ',idUsers',
+        'role'      => 'required|in:amo,department_head,admin,instructor,cashier',
+    ]);
+
+    $user->update($validated);
+    $this->logActivity(
+    request()->user()->idUsers,
+    "Updated User '{$user->full_name}'"
+);
+
+    return response()->json([
+        'message' => 'User updated successfully.',
+        'user' => $user,
+    ]);
+}
+
+// AMO only (route middleware). Sets a temporary password, shown once to
+// the AMO to pass on. The user is signed out everywhere and must choose a
+// new password at their next login.
+public function resetPassword($id)
+{
+    $user = User::find($id);
+
+    if (!$user) {
+        return response()->json(['message' => 'User not found.'], 404);
+    }
+
+    if ((int) $user->idUsers === (int) request()->user()->idUsers) {
+        return response()->json(['message' => 'Use Change Password in Settings for your own account.'], 422);
+    }
+
+    if (($user->status ?? 'active') === 'pending') {
+        return response()->json(['message' => 'This account has not been approved yet.'], 422);
+    }
+
+    // No look-alike characters (0/O, 1/l/I) so it is easy to read out.
+    $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    $temp = '';
+    for ($i = 0; $i < 10; $i++) {
+        $temp .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+    }
+
+    $user->password = $temp; // hashed by the model cast
+    $user->must_change_password = true;
+    $user->save();
+    $user->tokens()->delete();
+
+    $this->logActivity(
+        request()->user()->idUsers,
+        "Reset password for '{$user->full_name}'"
+    );
+
+    return response()->json([
+        'message' => 'Password reset.',
+        'temporary_password' => $temp,
+    ]);
+}
+
+// The AMO assigns an instructor / department head to a department, which
+// decides whose requests a department head sees in History.
+// Admin sets a new username for an account (PUT /users/{id}/username). The
+// route existed without this method, so calling it returned a server error.
+// Same rules as creating a user (required, unique), plus: no spaces.
+public function setUsername(Request $request, $id)
+{
+    $user = User::find($id);
+    if (!$user) {
+        return response()->json(['message' => 'User not found.'], 404);
+    }
+
+    $validated = $request->validate([
+        'username' => [
+            'required',
+            'string',
+            'max:255',
+            'regex:/^\S+$/',
+            'unique:users,username,' . $user->idUsers . ',idUsers',
+        ],
+    ], [
+        'username.regex' => 'The username cannot contain spaces.',
+    ]);
+
+    $old = $user->username;
+    $new = trim($validated['username']);
+
+    if ($old === $new) {
+        return response()->json(['message' => 'That is already this account\'s username.', 'username' => $old]);
+    }
+
+    $user->username = $new;
+    $user->save();
+
+    $this->logActivity(
+        $request->user()->idUsers,
+        "Changed username of {$user->full_name} from '{$old}' to '{$new}'"
+    );
+
+    return response()->json(['message' => 'Username updated.', 'username' => $user->username]);
+}
+
+public function setDepartment(Request $request, $id)
+{
+    $user = User::find($id);
+    if (!$user) {
+        return response()->json(['message' => 'User not found.'], 404);
+    }
+    if (!in_array(strtolower((string) $user->role), ['instructor', 'department_head'], true)) {
+        return response()->json(['message' => 'Only instructors and department heads have a department.'], 422);
+    }
+    $validated = $request->validate([
+        'iddept' => 'nullable|integer|exists:dept,iddept',
+    ]);
+    $user->iddept = $validated['iddept'] ?? null;
+    $user->save();
+    $this->logActivity($request->user()->idUsers, "Set department for {$user->full_name}");
+
+    return response()->json(['message' => 'Department saved.', 'iddept' => $user->iddept]);
+}
+
+// Switch an account off (it can't sign in, history is kept) or back on.
+// Safer than Remove: nothing is lost and it can be undone any time.
+public function setStatus(Request $request, $id)
+{
+    $user = User::find($id);
+    if (!$user) {
+        return response()->json(['message' => 'User not found.'], 404);
+    }
+    $validated = $request->validate(['status' => 'required|in:active,inactive']);
+    $new = $validated['status'];
+
+    if ((int) $user->idUsers === (int) $request->user()->idUsers) {
+        return response()->json(['message' => "You can't deactivate your own account."], 422);
+    }
+    if (($user->status ?? 'active') === 'pending') {
+        return response()->json(['message' => 'This account is still waiting for approval. Approve or decline it in Account Requests.'], 422);
+    }
+    if ($new === 'inactive' && strtolower((string) $user->role) === 'amo'
+        && User::whereRaw('LOWER(role) = ?', ['amo'])->where('status', 'active')->where('idUsers', '!=', $user->idUsers)->doesntExist()) {
+        return response()->json(['message' => 'This is the last active AMO account, so it cannot be deactivated.'], 422);
+    }
+
+    $user->status = $new;
+    $user->deactivated_at = $new === 'inactive' ? now() : null;
+    $user->save();
+    if ($new === 'inactive') {
+        // Sign them out of every device straight away.
+        $user->tokens()->delete();
+    }
+
+    $this->logActivity(
+        $request->user()->idUsers,
+        ($new === 'inactive' ? 'Deactivated' : 'Reactivated') . " User '{$user->full_name}'"
+    );
+
+    return response()->json([
+        'message' => $new === 'inactive' ? 'Account deactivated.' : 'Account reactivated.',
+        'status' => $new,
+    ]);
+}
+
+public function destroy($id)
+{
+    $user = User::find($id);
+
+    if (!$user) {
+        return response()->json([
+            'message' => 'User not found.'
+        ], 404);
+    }
+    if ((int) $user->idUsers === (int) request()->user()->idUsers) {
+        return response()->json(['message' => "You can't remove your own account."], 422);
+    }
+    $name = $user->full_name;
+    try {
+        $user->delete();
+    } catch (\Illuminate\Database\QueryException $e) {
+        // Requests, logs and other records still point at this account.
+        return response()->json([
+            'message' => "'{$name}' has request history, so the account can't be removed. Use Deactivate instead; it keeps the history and can be undone.",
+        ], 422);
+    }
+
+    $this->logActivity(
+    request()->user()->idUsers,
+    "Deleted User '{$name}'"
+);
+
+    return response()->json([
+        'message' => 'User deleted successfully.'
+    ]);
+}
+}
