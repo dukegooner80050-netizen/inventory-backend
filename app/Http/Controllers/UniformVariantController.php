@@ -34,7 +34,7 @@ class UniformVariantController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'idUniftype' => 'required|exists:uniformType,idUniftype',
+            'idUniftype' => 'required|exists:uniformtype,idUniftype',
             'iddept'     => 'required|exists:dept,iddept',
             'size'       => 'required|string|max:50',
             'gender'     => 'required|in:Male,Female,Unisex',
@@ -68,7 +68,7 @@ class UniformVariantController extends Controller
         }
 
         $validated = $request->validate([
-            'idUniftype' => 'required|exists:uniformType,idUniftype',
+            'idUniftype' => 'required|exists:uniformtype,idUniftype',
             'iddept'     => 'required|exists:dept,iddept',
             'size'       => 'required|string|max:50',
             'gender'     => 'required|in:Male,Female,Unisex',

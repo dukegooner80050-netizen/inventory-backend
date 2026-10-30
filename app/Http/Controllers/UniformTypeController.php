@@ -32,7 +32,7 @@ class UniformTypeController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'uniform_name' => 'required|string|max:255|unique:uniformType,uniform_name',
+            'uniform_name' => 'required|string|max:255|unique:uniformtype,uniform_name',
             'description'  => 'nullable|string|max:255',
         ]);
 
@@ -59,7 +59,7 @@ class UniformTypeController extends Controller
         }
 
         $validated = $request->validate([
-            'uniform_name' => 'required|string|max:255|unique:uniformType,uniform_name,' . $id . ',idUniftype',
+            'uniform_name' => 'required|string|max:255|unique:uniformtype,uniform_name,' . $id . ',idUniftype',
             'description'  => 'nullable|string|max:255',
         ]);
 
@@ -85,6 +85,7 @@ class UniformTypeController extends Controller
             ], 404);
         }
 
+        $name = $uniformType->uniform_name;
         $uniformType->delete();
         $this->logActivity(
     request()->user()->idUsers,
