@@ -430,6 +430,17 @@ if (
         ], 422);
     }
 
+    /* Most different items in one request (the AMO sets it; the AMO is exempt). Uniform lines are not counted. */
+    if ($role !== 'amo') {
+        $maxItems = \App\Http\Controllers\SettingController::maxItemsPerRequest();
+        $distinct = collect($validated['items'] ?? [])->pluck('iditems')->unique()->count();
+        if ($distinct > $maxItems) {
+            return response()->json([
+                'message' => "A request can have at most {$maxItems} different items. Please split it into separate requests."
+            ], 422);
+        }
+    }
+
     // Cashier uniform requests have no monthly limit.
     $isCashierUniformRequest = strtolower((string) $role) === 'cashier'
         && !empty($validated['uniforms'])

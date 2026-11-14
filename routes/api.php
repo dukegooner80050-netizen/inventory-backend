@@ -144,6 +144,7 @@ Route::middleware([AdminSessionTimeoutMiddleware::class, 'auth:sanctum', \App\Ht
         // Anyone who submits requests needs to see their own limit.
         Route::get('/settings/monthly-request-limit', [SettingController::class, 'monthlyRequestLimit']);
         Route::get('/settings/student-id-length', [SettingController::class, 'studentIdLength']);
+        Route::get('/settings/max-items', [SettingController::class, 'maxItems']);
         Route::get('/settings/return-periods', [SettingController::class, 'returnPeriods']);
 
         // Roadmap #13: anyone can report equipment that needs maintenance or
@@ -346,6 +347,7 @@ Route::middleware('role:amo,department_head,admin,instructor,cashier')->group(fu
 
         Route::put('/settings/monthly-request-limit', [SettingController::class, 'updateMonthlyRequestLimit']);
         Route::put('/settings/student-id-length', [SettingController::class, 'updateStudentIdLength']);
+        Route::put('/settings/max-items', [SettingController::class, 'updateMaxItems']);
         Route::put('/settings/return-periods', [SettingController::class, 'updateReturnPeriods']);
         Route::get('/settings/stock-levels', [SettingController::class, 'stockLevels']);
         Route::put('/settings/stock-levels', [SettingController::class, 'updateStockLevels']);

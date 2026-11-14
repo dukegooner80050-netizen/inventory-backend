@@ -13,6 +13,39 @@ class SettingController extends Controller
 
     const DEFAULT_MONTHLY_REQUEST_LIMIT = 5;
     const DEFAULT_STUDENT_ID_LENGTH = 15;
+    const DEFAULT_MAX_ITEMS_PER_REQUEST = 10;
+
+    // Most different items one request may hold (the AMO can change it).
+    public static function maxItemsPerRequest(): int
+    {
+        $s = Setting::where('setting_key', 'max_items_per_request')->first();
+        $n = $s ? (int) $s->setting_value : self::DEFAULT_MAX_ITEMS_PER_REQUEST;
+        return $n >= 1 ? $n : self::DEFAULT_MAX_ITEMS_PER_REQUEST;
+    }
+
+    // Any authenticated role can read this (the Request page needs it).
+    public function maxItems()
+    {
+        return response()->json(['max_items_per_request' => self::maxItemsPerRequest()]);
+    }
+
+    // AMO only (route middleware).
+    public function updateMaxItems(Request $request)
+    {
+        $validated = $request->validate([
+            'max_items_per_request' => 'required|integer|min:1|max:50',
+        ]);
+        Setting::updateOrCreate(
+            ['setting_key' => 'max_items_per_request'],
+            ['setting_value' => (string) $validated['max_items_per_request']]
+        );
+        $this->logActivity(request()->user()->idUsers, "Set the maximum items per request to {$validated['max_items_per_request']}");
+
+        return response()->json([
+            'message' => 'Maximum items per request saved.',
+            'max_items_per_request' => (int) $validated['max_items_per_request'],
+        ]);
+    }
 
     // Longest student ID number the system accepts (the AMO can change it).
     public static function studentIdMax(): int
