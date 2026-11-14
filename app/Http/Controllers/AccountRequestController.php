@@ -35,6 +35,7 @@ class AccountRequestController extends Controller
     {
         $validated = $request->validate([
             'role' => 'required|in:admin,department_head,instructor,cashier',
+            'iddept' => 'nullable|integer|exists:dept,iddept',
         ]);
 
         return DB::transaction(function () use ($validated, $id) {
@@ -49,6 +50,10 @@ class AccountRequestController extends Controller
             }
 
             $user->role = $validated['role'];
+            // Only instructors and department heads have a department.
+            $user->iddept = in_array($validated['role'], ['instructor', 'department_head'], true)
+                ? ($validated['iddept'] ?? null)
+                : null;
             $user->status = 'active';
             $user->save();
 
