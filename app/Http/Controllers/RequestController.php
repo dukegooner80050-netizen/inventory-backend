@@ -371,7 +371,7 @@ public function store(HttpRequest $request)
         'uniforms.*.quantity' => 'required|integer|min:1',
         'location' => 'required|string|max:255',
         'room' => 'required|string|max:255',
-        'purpose' => 'required|string|max:500',
+        'purpose' => 'required|string|max:100',
     ]);
 if (
     empty($validated['items']) &&
