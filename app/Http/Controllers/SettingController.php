@@ -15,35 +15,61 @@ class SettingController extends Controller
     const DEFAULT_STUDENT_ID_LENGTH = 15;
     const DEFAULT_MAX_ITEMS_PER_REQUEST = 10;
 
-    // Most different items one request may hold (the AMO can change it).
-    public static function maxItemsPerRequest(): int
+    // Roles that have a request-size limit (the AMO is exempt).
+    const MAX_ITEMS_ROLES = ['department_head', 'admin', 'instructor', 'cashier'];
+
+    // Most different items one request may hold for a role (the AMO can change it per role).
+    public static function maxItemsPerRequest(?string $role = null): int
     {
+        $role = strtolower((string) $role);
+        if (in_array($role, self::MAX_ITEMS_ROLES, true)) {
+            $own = Setting::where('setting_key', "max_items_{$role}")->first();
+            if ($own && (int) $own->setting_value >= 1) {
+                return (int) $own->setting_value;
+            }
+        }
         $s = Setting::where('setting_key', 'max_items_per_request')->first();
         $n = $s ? (int) $s->setting_value : self::DEFAULT_MAX_ITEMS_PER_REQUEST;
         return $n >= 1 ? $n : self::DEFAULT_MAX_ITEMS_PER_REQUEST;
     }
 
-    // Any authenticated role can read this (the Request page needs it).
+    // Any authenticated role can read this: its own limit, plus every role's for the Settings page.
     public function maxItems()
     {
-        return response()->json(['max_items_per_request' => self::maxItemsPerRequest()]);
+        $by = [];
+        foreach (self::MAX_ITEMS_ROLES as $r) {
+            $by[$r] = self::maxItemsPerRequest($r);
+        }
+        return response()->json([
+            'max_items_per_request' => self::maxItemsPerRequest(request()->user()->role),
+            'by_role' => $by,
+        ]);
     }
 
     // AMO only (route middleware).
     public function updateMaxItems(Request $request)
     {
-        $validated = $request->validate([
-            'max_items_per_request' => 'required|integer|min:1|max:50',
-        ]);
-        Setting::updateOrCreate(
-            ['setting_key' => 'max_items_per_request'],
-            ['setting_value' => (string) $validated['max_items_per_request']]
+        $rules = [];
+        foreach (self::MAX_ITEMS_ROLES as $r) {
+            $rules["by_role.{$r}"] = 'required|integer|min:1|max:50';
+        }
+        $validated = $request->validate(['by_role' => 'required|array'] + $rules);
+
+        foreach (self::MAX_ITEMS_ROLES as $r) {
+            Setting::updateOrCreate(
+                ['setting_key' => "max_items_{$r}"],
+                ['setting_value' => (string) $validated['by_role'][$r]]
+            );
+        }
+        $this->logActivity(
+            request()->user()->idUsers,
+            'Set the maximum items per request: ' . collect(self::MAX_ITEMS_ROLES)
+                ->map(fn ($r) => "{$r} {$validated['by_role'][$r]}")->implode(', ')
         );
-        $this->logActivity(request()->user()->idUsers, "Set the maximum items per request to {$validated['max_items_per_request']}");
 
         return response()->json([
             'message' => 'Maximum items per request saved.',
-            'max_items_per_request' => (int) $validated['max_items_per_request'],
+            'by_role' => collect(self::MAX_ITEMS_ROLES)->mapWithKeys(fn ($r) => [$r => (int) $validated['by_role'][$r]]),
         ]);
     }
 

@@ -432,7 +432,7 @@ if (
 
     /* Most different items in one request (the AMO sets it; the AMO is exempt). Uniform lines are not counted. */
     if ($role !== 'amo') {
-        $maxItems = \App\Http\Controllers\SettingController::maxItemsPerRequest();
+        $maxItems = \App\Http\Controllers\SettingController::maxItemsPerRequest($role);
         $distinct = collect($validated['items'] ?? [])->pluck('iditems')->unique()->count();
         if ($distinct > $maxItems) {
             return response()->json([
