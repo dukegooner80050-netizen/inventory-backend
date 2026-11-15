@@ -33,44 +33,58 @@ class SettingController extends Controller
         return $n >= 1 ? $n : self::DEFAULT_MAX_ITEMS_PER_REQUEST;
     }
 
-    // Any authenticated role can read this: its own limit, plus every role's for the Settings page.
+    // Monthly request limit for a role (own value, else the old single limit, else the default).
+    public static function monthlyLimitFor(?string $role = null): int
+    {
+        $role = strtolower((string) $role);
+        if (in_array($role, self::MAX_ITEMS_ROLES, true)) {
+            $own = Setting::where('setting_key', "monthly_limit_{$role}")->first();
+            if ($own && (int) $own->setting_value >= 1) {
+                return (int) $own->setting_value;
+            }
+        }
+        $s = Setting::where('setting_key', 'monthly_request_limit')->first();
+        $n = $s ? (int) $s->setting_value : self::DEFAULT_MONTHLY_REQUEST_LIMIT;
+        return $n >= 1 ? $n : self::DEFAULT_MONTHLY_REQUEST_LIMIT;
+    }
+
+    // Any authenticated role: its own items-per-request limit (the Request page needs it).
     public function maxItems()
+    {
+        return response()->json(['max_items_per_request' => self::maxItemsPerRequest(request()->user()->role)]);
+    }
+
+    // AMO only (route middleware): every role's two limits for the Settings card.
+    public function requestLimits()
     {
         $by = [];
         foreach (self::MAX_ITEMS_ROLES as $r) {
-            $by[$r] = self::maxItemsPerRequest($r);
+            $by[$r] = ['items' => self::maxItemsPerRequest($r), 'monthly' => self::monthlyLimitFor($r)];
         }
-        return response()->json([
-            'max_items_per_request' => self::maxItemsPerRequest(request()->user()->role),
-            'by_role' => $by,
-        ]);
+        return response()->json(['by_role' => $by]);
     }
 
     // AMO only (route middleware).
-    public function updateMaxItems(Request $request)
+    public function updateRequestLimits(Request $request)
     {
-        $rules = [];
+        $rules = ['by_role' => 'required|array'];
         foreach (self::MAX_ITEMS_ROLES as $r) {
-            $rules["by_role.{$r}"] = 'required|integer|min:1|max:50';
+            $rules["by_role.{$r}.items"] = 'required|integer|min:1|max:50';
+            $rules["by_role.{$r}.monthly"] = 'required|integer|min:1|max:999';
         }
-        $validated = $request->validate(['by_role' => 'required|array'] + $rules);
+        $v = $request->validate($rules);
 
         foreach (self::MAX_ITEMS_ROLES as $r) {
-            Setting::updateOrCreate(
-                ['setting_key' => "max_items_{$r}"],
-                ['setting_value' => (string) $validated['by_role'][$r]]
-            );
+            Setting::updateOrCreate(['setting_key' => "max_items_{$r}"], ['setting_value' => (string) $v['by_role'][$r]['items']]);
+            Setting::updateOrCreate(['setting_key' => "monthly_limit_{$r}"], ['setting_value' => (string) $v['by_role'][$r]['monthly']]);
         }
         $this->logActivity(
             request()->user()->idUsers,
-            'Set the maximum items per request: ' . collect(self::MAX_ITEMS_ROLES)
-                ->map(fn ($r) => "{$r} {$validated['by_role'][$r]}")->implode(', ')
+            'Set request limits (items per request / requests per month): ' . collect(self::MAX_ITEMS_ROLES)
+                ->map(fn ($r) => "{$r} {$v['by_role'][$r]['items']}/{$v['by_role'][$r]['monthly']}")->implode(', ')
         );
 
-        return response()->json([
-            'message' => 'Maximum items per request saved.',
-            'by_role' => collect(self::MAX_ITEMS_ROLES)->mapWithKeys(fn ($r) => [$r => (int) $validated['by_role'][$r]]),
-        ]);
+        return $this->requestLimits();
     }
 
     // Longest student ID number the system accepts (the AMO can change it).
@@ -121,35 +135,8 @@ class SettingController extends Controller
     /* Readable by any role (non-AMO users need to see their own limit). */
     public function monthlyRequestLimit()
     {
-        $setting = Setting::where('setting_key', 'monthly_request_limit')->first();
-
         return response()->json([
-            'monthly_request_limit' => $setting
-                ? (int) $setting->setting_value
-                : self::DEFAULT_MONTHLY_REQUEST_LIMIT,
-        ]);
-    }
-
-    // Admin only (enforced by route middleware).
-    public function updateMonthlyRequestLimit(Request $request)
-    {
-        $validated = $request->validate([
-            'monthly_request_limit' => 'required|integer|min:1',
-        ]);
-
-        $setting = Setting::updateOrCreate(
-            ['setting_key' => 'monthly_request_limit'],
-            ['setting_value' => (string) $validated['monthly_request_limit']]
-        );
-
-        $this->logActivity(
-            request()->user()->idUsers,
-            "Updated monthly request limit to {$validated['monthly_request_limit']}"
-        );
-
-        return response()->json([
-            'message' => 'Monthly request limit updated successfully.',
-            'monthly_request_limit' => (int) $setting->setting_value,
+            'monthly_request_limit' => self::monthlyLimitFor(request()->user()->role),
         ]);
     }
 

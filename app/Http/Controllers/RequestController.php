@@ -448,10 +448,7 @@ if (
 
     /* The monthly limit applies to everyone except the AMO and cashier uniform requests. */
     if ($role !== 'amo' && !$isCashierUniformRequest) {
-        $limitSetting = \App\Models\Setting::where('setting_key', 'monthly_request_limit')->first();
-        $limit = $limitSetting
-            ? (int) $limitSetting->setting_value
-            : \App\Http\Controllers\SettingController::DEFAULT_MONTHLY_REQUEST_LIMIT;
+        $limit = \App\Http\Controllers\SettingController::monthlyLimitFor($role);
 
         $requestsThisMonth = Request::where('idUsers', $idUsers)
             ->where(function ($q) {

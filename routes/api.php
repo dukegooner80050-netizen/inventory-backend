@@ -345,9 +345,9 @@ Route::middleware('role:amo,department_head,admin,instructor,cashier')->group(fu
         | Settings
         */
 
-        Route::put('/settings/monthly-request-limit', [SettingController::class, 'updateMonthlyRequestLimit']);
+        Route::get('/settings/request-limits', [SettingController::class, 'requestLimits']);
+        Route::put('/settings/request-limits', [SettingController::class, 'updateRequestLimits']);
         Route::put('/settings/student-id-length', [SettingController::class, 'updateStudentIdLength']);
-        Route::put('/settings/max-items', [SettingController::class, 'updateMaxItems']);
         Route::put('/settings/return-periods', [SettingController::class, 'updateReturnPeriods']);
         Route::get('/settings/stock-levels', [SettingController::class, 'stockLevels']);
         Route::put('/settings/stock-levels', [SettingController::class, 'updateStockLevels']);
