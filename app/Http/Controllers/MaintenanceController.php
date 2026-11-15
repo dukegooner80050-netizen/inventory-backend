@@ -44,7 +44,7 @@ class MaintenanceController extends Controller
         $validated = $request->validate([
             'outcome' => 'required|in:repaired,unrepairable',
             'quantity' => 'required|integer|min:1',
-            'notes' => 'nullable|string|max:255|required_if:outcome,unrepairable',
+            'notes' => 'nullable|string|max:100|required_if:outcome,unrepairable',
         ]);
 
         $user = $request->user();

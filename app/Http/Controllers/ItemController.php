@@ -379,7 +379,7 @@ public function adjustStock(Request $request, $id)
     $validated = $request->validate([
         'quantity' => 'required|integer|min:1',
         'reason' => 'required|in:Missing,Lost,Stolen,Other',
-        'notes' => 'nullable|string|max:255|required_if:reason,Other',
+        'notes' => 'nullable|string|max:100|required_if:reason,Other',
     ]);
 
     $userId = $request->user()->idUsers;

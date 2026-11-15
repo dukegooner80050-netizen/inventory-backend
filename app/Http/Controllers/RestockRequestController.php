@@ -78,7 +78,7 @@ class RestockRequestController extends Controller
         $validated = $request->validate([
             'iditems' => 'required|exists:items,iditems',
             'quantity_needed' => 'required|integer|min:1',
-            'notes' => 'nullable|string|max:255',
+            'notes' => 'nullable|string|max:100',
         ]);
 
         $item = Item::find($validated['iditems']);

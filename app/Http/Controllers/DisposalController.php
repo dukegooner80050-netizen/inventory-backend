@@ -24,7 +24,7 @@ class DisposalController extends Controller
             'quantity' => 'required|integer|min:1',
             'method' => 'required|in:' . implode(',', self::METHODS),
             'disposed_on' => 'nullable|date_format:Y-m-d|before_or_equal:today',
-            'notes' => 'nullable|string|max:255|required_if:method,Other',
+            'notes' => 'nullable|string|max:100|required_if:method,Other',
         ]);
 
         $user = $request->user();

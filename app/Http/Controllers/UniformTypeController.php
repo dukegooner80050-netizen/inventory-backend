@@ -34,7 +34,7 @@ class UniformTypeController extends Controller
     {
         $validated = $request->validate([
             'uniform_name' => 'required|string|max:255',
-            'description'  => 'nullable|string|max:255',
+            'description'  => 'nullable|string|max:100',
             'iddept'       => 'nullable|exists:dept,iddept',
         ]);
 
@@ -74,7 +74,7 @@ class UniformTypeController extends Controller
 
         $validated = $request->validate([
             'uniform_name' => 'required|string|max:255',
-            'description'  => 'nullable|string|max:255',
+            'description'  => 'nullable|string|max:100',
             'iddept'       => 'nullable|exists:dept,iddept',
         ]);
 

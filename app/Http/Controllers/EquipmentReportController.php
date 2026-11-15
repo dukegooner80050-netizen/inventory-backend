@@ -125,7 +125,7 @@ class EquipmentReportController extends Controller
             'iditems' => 'required|integer',
             'quantity' => 'required|integer|min:1',
             'report_type' => 'required|in:' . implode(',', self::TYPES),
-            'description' => 'required|string|max:500',
+            'description' => 'required|string|max:100',
         ]);
 
         $userId = $request->user()->idUsers;
@@ -252,7 +252,7 @@ class EquipmentReportController extends Controller
     public function dismiss(Request $request, $id)
     {
         $validated = $request->validate([
-            'notes' => 'required|string|max:255',
+            'notes' => 'required|string|max:100',
         ]);
 
         $userId = $request->user()->idUsers;

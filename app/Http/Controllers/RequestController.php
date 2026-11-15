@@ -370,7 +370,12 @@ public function store(HttpRequest $request)
         'uniforms.*.idUnifvariant' => 'required|exists:uniformvariant,idUnifvariant',
         'uniforms.*.quantity' => 'required|integer|min:1',
         'location' => 'required|string|max:255',
-        'room' => 'required|string|max:255',
+        'room' => ['required', 'string', 'max:255', function ($attr, $value, $fail) {
+            // "Others: <details>": the details part is limited to 100 characters.
+            if (str_starts_with($value, 'Others: ') && mb_strlen($value) > 108) {
+                $fail('The room details can be at most 100 characters.');
+            }
+        }],
         'purpose' => 'required|string|max:100',
     ]);
 if (
@@ -616,7 +621,7 @@ public function approve(HttpRequest $httpRequest, $id)
     $validated = $httpRequest->validate([
         'due_dates' => 'nullable|array',
         'due_dates.*' => 'nullable|date_format:Y-m-d|after_or_equal:today',
-        'approval_remarks' => 'nullable|string|max:500',
+        'approval_remarks' => 'nullable|string|max:100',
     ]);
     $dueDates = $validated['due_dates'] ?? [];
     $remarks = trim((string) ($validated['approval_remarks'] ?? ''));
@@ -823,7 +828,7 @@ public function reject(HttpRequest $httpRequest, $id)
             ], 404);
         }
 $validated = $httpRequest->validate([
-    'rejectReason' => 'required|string|max:500',
+    'rejectReason' => 'required|string|max:100',
 ]);
 
         if (!in_array($request->status, ['With Inventory', 'Pending'], true)) {
@@ -982,7 +987,7 @@ public function coordinatorReview(HttpRequest $httpRequest, $id)
     }
     $validated = $httpRequest->validate([
         'action' => 'required|in:acknowledge,flag',
-        'note' => 'nullable|string|max:500',
+        'note' => 'nullable|string|max:100',
     ]);
     $note = trim((string) ($validated['note'] ?? ''));
     if ($validated['action'] === 'flag' && mb_strlen($note) < 3) {
@@ -1024,7 +1029,7 @@ public function coordinatorReject(HttpRequest $httpRequest, $id)
     if (strtolower((string) $actor->role) !== 'department_head') {
         return response()->json(['message' => 'Only the Dean/Academic Coordinator can return these requests.'], 403);
     }
-    $validated = $httpRequest->validate(['reason' => 'required|string|min:3|max:500']);
+    $validated = $httpRequest->validate(['reason' => 'required|string|min:3|max:100']);
     $reason = trim($validated['reason']);
 
     return DB::transaction(function () use ($id, $actor, $reason) {
@@ -1055,7 +1060,7 @@ public function coordinatorReject(HttpRequest $httpRequest, $id)
 public function forwardToInventory(HttpRequest $httpRequest, $id)
 {
     $actor = $httpRequest->user();
-    $httpRequest->validate(['note' => 'nullable|string|max:500']);
+    $httpRequest->validate(['note' => 'nullable|string|max:100']);
     $note = trim((string) ($httpRequest->input('note') ?? ''));
     if (strtolower((string) $actor->role) !== 'department_head') {
         return response()->json(['message' => 'Only the Dean/Academic Coordinator can forward requests.'], 403);
@@ -1093,7 +1098,7 @@ public function amoTakeOver(HttpRequest $httpRequest, $id)
     if (strtolower((string) $actor->role) !== 'amo') {
         return response()->json(['message' => 'Only the AMO can take over a request.'], 403);
     }
-    $validated = $httpRequest->validate(['reason' => 'required|string|min:3|max:500']);
+    $validated = $httpRequest->validate(['reason' => 'required|string|min:3|max:100']);
     $reason = trim($validated['reason']);
 
     return DB::transaction(function () use ($id, $actor, $reason) {
@@ -1554,7 +1559,7 @@ public function confirmReceived(HttpRequest $httpRequest, $id)
 public function cancelApproved(HttpRequest $httpRequest, $id)
 {
     $actor = $httpRequest->user();
-    $validated = $httpRequest->validate(['reason' => 'required|string|min:3|max:255']);
+    $validated = $httpRequest->validate(['reason' => 'required|string|min:3|max:100']);
 
     return DB::transaction(function () use ($id, $actor, $validated) {
         $r = Request::with(['items', 'uniforms'])->where('idrequest', $id)->lockForUpdate()->first();
