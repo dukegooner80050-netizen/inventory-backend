@@ -163,7 +163,7 @@ public function setUsername(Request $request, $id)
     return response()->json(['message' => 'Username updated.', 'username' => $user->username]);
 }
 
-// assigns an instructor / department head to a department; it decides whose requests a head sees.
+// assigns an instructor / program head to a department; it decides whose requests a head sees.
 public function setDepartment(Request $request, $id)
 {
     $user = User::find($id);
@@ -171,7 +171,7 @@ public function setDepartment(Request $request, $id)
         return response()->json(['message' => 'User not found.'], 404);
     }
     if (!in_array(strtolower((string) $user->role), ['instructor', 'department_head'], true)) {
-        return response()->json(['message' => 'Only instructors and department heads have a department.'], 422);
+        return response()->json(['message' => 'Only instructors and program heads have a department.'], 422);
     }
     $validated = $request->validate([
         'iddept' => 'nullable|integer|exists:dept,iddept',

@@ -50,7 +50,7 @@ class AccountRequestController extends Controller
             }
 
             $user->role = $validated['role'];
-            // Only instructors and department heads have a department.
+            // Only instructors and program heads have a department.
             $user->iddept = in_array($validated['role'], ['instructor', 'department_head'], true)
                 ? ($validated['iddept'] ?? null)
                 : null;

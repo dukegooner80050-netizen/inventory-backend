@@ -29,7 +29,7 @@ private static function deptNameFor($iddept)
     return $cache[$iddept];
 }
 
-/** idUsers of the department heads who handle this requester's department. */
+/** idUsers of the program heads who handle this requester's department. */
 private function headIdsFor($requester)
 {
     $heads = \App\Models\User::whereRaw('LOWER(role) = ?', ['department_head'])->get(['idUsers', 'iddept']);
@@ -41,7 +41,7 @@ private function headIdsFor($requester)
     return $match->pluck('idUsers')->all();
 }
 
-/** May this department head review/forward this requester's request? */
+/** May this program head review/forward this requester's request? */
 private function headCanHandle($head, $requester)
 {
     return in_array((int) $head->idUsers, array_map('intval', $this->headIdsFor($requester)), true);
@@ -405,7 +405,7 @@ if (
         ], 422);
     }
 
-    /* An instructor may skip the department head but must give a reason, which is saved. */
+    /* An instructor may skip the program head but must give a reason, which is saved. */
     $sendDirect = strtolower((string) $role) === 'instructor' && !empty($validated['send_direct']);
     $directReason = trim((string) ($validated['direct_reason'] ?? ''));
     if ($sendDirect && mb_strlen($directReason) < 3) {
@@ -478,7 +478,7 @@ if (
             'approved_by' => null,
             // Server time, with the time of day (the browser used to send only a date).
             'request_date' => now(),
-            /* Only instructors go through the Department Head; everyone else goes straight to the AMO. */
+            /* Only instructors go through the Program Head; everyone else goes straight to the AMO. */
             'status' => (strtolower((string) request()->user()->role) === 'instructor' && !$sendDirect) ? 'With Coordinator' : 'With Inventory',
             'direct_to_amo_reason' => $sendDirect ? mb_substr($directReason, 0, 255) : null,
             'location' => $validated['location'],
@@ -559,7 +559,7 @@ if ($newRequest->status === 'With Inventory' && strtolower((string) $role) !== '
     $this->notifyInventoryOfRequest($newRequest, (int) $idUsers);
 }
 if ($newRequest->direct_to_amo_reason) {
-    // The department head was skipped: tell them so they can review it afterwards.
+    // The program head was skipped: tell them so they can review it afterwards.
     $who = optional($newRequest->user)->username ?? 'An instructor';
     foreach ($this->headIdsFor($newRequest->user) as $headId) {
         $this->createRequestNotification($newRequest, (int) $headId, 'direct_review', "Request #{$newRequest->idrequest} from {$who} was sent straight to the AMO ({$newRequest->direct_to_amo_reason}). Please review it.", (int) $idUsers);
@@ -911,7 +911,7 @@ public function coordinatorQueue()
         ->where('status', 'With Coordinator')->orderBy('request_date')->get()->map(fn ($r) => $this->formatWorkflowRequest($r)));
 }
 
-/* Requests an instructor sent straight to the AMO, for the department head to acknowledge or flag. */
+/* Requests an instructor sent straight to the AMO, for the program head to acknowledge or flag. */
 public function directQueue()
 {
     $user = request()->user();
@@ -929,7 +929,7 @@ public function directQueue()
         ])));
 }
 
-/* Department head's History tab: their department's instructors, filtered by date, instructor and source. */
+/* Program head's History tab: their department's instructors, filtered by date, instructor and source. */
 public function coordinatorHistory(HttpRequest $httpRequest)
 {
     $user = $httpRequest->user();
@@ -1012,7 +1012,7 @@ public function coordinatorReview(HttpRequest $httpRequest, $id)
 
     if ($status === 'Flagged') {
         foreach (\App\Models\User::whereRaw('LOWER(role) = ?', ['amo'])->pluck('idUsers') as $amoId) {
-            $this->createRequestNotification($r, (int) $amoId, 'coordinator_flag', "The department head flagged request #{$r->idrequest}: {$note}", (int) $actor->idUsers);
+            $this->createRequestNotification($r, (int) $amoId, 'coordinator_flag', "The program head flagged request #{$r->idrequest}: {$note}", (int) $actor->idUsers);
         }
     }
     $this->logActivity($actor->idUsers, "{$status} direct request #{$r->idrequest}");
@@ -1022,7 +1022,7 @@ public function coordinatorReview(HttpRequest $httpRequest, $id)
     ]);
 }
 
-/* Department head declines a request under review; nothing was reserved, so no stock changes. */
+/* Program head declines a request under review; nothing was reserved, so no stock changes. */
 public function coordinatorReject(HttpRequest $httpRequest, $id)
 {
     $actor = $httpRequest->user();
@@ -1051,8 +1051,8 @@ public function coordinatorReject(HttpRequest $httpRequest, $id)
             'notified_at' => now(),
             'notified_by' => $actor->idUsers,
         ]);
-        $this->createRequestNotification($r, (int) $r->idUsers, 'decision', 'Your request #' . $r->idrequest . ' was returned by the department head. Reason: ' . $reason, (int) $actor->idUsers);
-        $this->logActivity($actor->idUsers, "Returned Request #{$r->idrequest} (department head): {$reason}");
+        $this->createRequestNotification($r, (int) $r->idUsers, 'decision', 'Your request #' . $r->idrequest . ' was returned by the program head. Reason: ' . $reason, (int) $actor->idUsers);
+        $this->logActivity($actor->idUsers, "Returned Request #{$r->idrequest} (program head): {$reason}");
         return response()->json(['message' => 'Request returned. The instructor has been notified.']);
     });
 }
@@ -1105,7 +1105,7 @@ public function amoTakeOver(HttpRequest $httpRequest, $id)
         $r = Request::with('user')->where('idrequest', $id)->lockForUpdate()->first();
         if (!$r) return response()->json(['message' => 'Request not found.'], 404);
         if ($r->status !== 'With Coordinator') {
-            return response()->json(['message' => 'Only requests waiting for the department head can be taken over.'], 422);
+            return response()->json(['message' => 'Only requests waiting for the program head can be taken over.'], 422);
         }
         $r->update([
             'status' => 'With Inventory',
@@ -1117,7 +1117,7 @@ public function amoTakeOver(HttpRequest $httpRequest, $id)
             'notified_by' => $actor->idUsers,
         ]);
         $this->createRequestNotification($r, (int) $r->idUsers, 'forwarded', 'Your request #' . $r->idrequest . ' was moved to Inventory Management by the AMO. Reason: ' . $reason, (int) $actor->idUsers);
-        $this->logActivity($actor->idUsers, "Took over Request #{$r->idrequest} from the department head: {$reason}");
+        $this->logActivity($actor->idUsers, "Took over Request #{$r->idrequest} from the program head: {$reason}");
         return response()->json(['message' => 'Request taken over and moved to Inventory Management.', 'status' => $r->status]);
     });
 }
