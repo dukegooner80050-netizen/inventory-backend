@@ -466,6 +466,9 @@ if (
                 $q->whereHas('items')->orWhereDoesntHave('uniforms');
             })
             ->whereNotIn('status', ['Rejected', 'Cancelled'])   // a rejected or cancelled request does not use up the limit
+            ->where(function ($q) {                              // a request reopened by an appeal was already counted when first made
+                $q->whereNull('appeal_decision')->orWhere('appeal_decision', '!=', 'Reopened');
+            })
             ->whereMonth('request_date', now()->month)
             ->whereYear('request_date', now()->year)
             ->count();
