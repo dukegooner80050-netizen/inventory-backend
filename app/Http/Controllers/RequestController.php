@@ -115,6 +115,7 @@ return response()->json(
             'appealDecision' => $request->appeal_decision,
             'appealReply' => $request->appeal_reply,
             'appealDecidedAt' => $request->appeal_decided_at,
+            'againUsedAt' => $request->again_used_at,
             'stockHeld' => (bool) $request->stock_held,
             'releasedToStudent' => $request->released_to_student,
             'releasedStudentId' => $request->released_student_id,
@@ -375,6 +376,7 @@ public function store(HttpRequest $request)
         'direct_reason' => 'nullable|string|max:255',
         'uniforms.*.idUnifvariant' => 'required|exists:uniformvariant,idUnifvariant',
         'uniforms.*.quantity' => 'required|integer|min:1',
+        'again_of' => 'nullable|integer',
         'location' => 'required|string|max:255',
         'room' => ['required', 'string', 'max:255', function ($attr, $value, $fail) {
             // "Others: <details>": the details part is limited to 100 characters.
@@ -481,6 +483,16 @@ if (
     }
 
     DB::transaction(function () use ($validated, $idUsers, $isCashierUniformRequest, $sendDirect, $directReason, &$newRequest) {
+
+        // "Request again": each rejected request can be used for it only once.
+        if (!empty($validated['again_of'])) {
+            $old = Request::where('idrequest', $validated['again_of'])->lockForUpdate()->first();
+            if (!$old || (int) $old->idUsers !== (int) $idUsers || $old->status !== 'Rejected' || $old->again_used_at) {
+                abort(422, 'This rejected request was already used for a new request, or it is not available.');
+            }
+            $old->again_used_at = now();
+            $old->save();
+        }
 
         $newRequest = Request::create([
             'idUsers' => $idUsers,

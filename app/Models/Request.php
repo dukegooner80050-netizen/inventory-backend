@@ -47,6 +47,7 @@ protected $fillable = [
     'appeal_reply',
     'appeal_decided_by',
     'appeal_decided_at',
+    'again_used_at',
 ];
 
 public $timestamps = false;
