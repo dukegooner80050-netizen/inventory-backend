@@ -13,7 +13,8 @@ class UserController extends Controller
 
     public function index()
     {
-        return response()->json(User::all());
+        // Unfinished (email not verified) sign-ups are not accounts yet.
+        return response()->json(User::where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'unverified'))->get());
     }
 
     public function show($id)
@@ -98,7 +99,7 @@ public function resetPassword($id)
         return response()->json(['message' => 'Use Change Password in Settings for your own account.'], 422);
     }
 
-    if (($user->status ?? 'active') === 'pending') {
+    if (in_array($user->status ?? 'active', ['pending', 'unverified'], true)) {
         return response()->json(['message' => 'This account has not been approved yet.'], 422);
     }
 
@@ -196,7 +197,7 @@ public function setStatus(Request $request, $id)
     if ((int) $user->idUsers === (int) $request->user()->idUsers) {
         return response()->json(['message' => "You can't deactivate your own account."], 422);
     }
-    if (($user->status ?? 'active') === 'pending') {
+    if (in_array($user->status ?? 'active', ['pending', 'unverified'], true)) {
         return response()->json(['message' => 'This account is still waiting for approval. Approve or decline it in Account Requests.'], 422);
     }
     if ($new === 'inactive' && strtolower((string) $user->role) === 'amo'

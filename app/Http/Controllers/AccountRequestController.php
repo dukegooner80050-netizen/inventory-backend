@@ -24,6 +24,11 @@ class AccountRequestController extends Controller
                     'full_name' => $u->full_name,
                     'username' => $u->username,
                     'requested_at' => $u->created_at,
+                    'employee_id' => $u->employee_id,
+                    'email' => $u->email,
+                    'email_verified' => (bool) $u->email_verified_at,
+                    'requested_role' => $u->requested_role,
+                    'requested_iddept' => $u->requested_iddept,
                 ];
             });
 

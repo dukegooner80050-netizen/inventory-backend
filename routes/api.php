@@ -36,6 +36,12 @@ use App\Http\Middleware\AdminSessionTimeoutMiddleware;
 // Rate limited so the approval queue cannot be flooded.
 Route::post('/register', [AuthController::class, 'register'])
     ->middleware('throttle:5,1');
+Route::post('/register/verify', [AuthController::class, 'verifyEmail'])
+    ->middleware('throttle:10,1');
+Route::post('/register/resend', [AuthController::class, 'resendCode'])
+    ->middleware('throttle:5,1');
+Route::get('/public/departments', [AuthController::class, 'departments'])
+    ->middleware('throttle:30,1');
 // Rate limited (5 per minute per username + IP) against password guessing.
 Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:login');

@@ -49,6 +49,10 @@ class User extends Authenticatable
      */
     protected $hidden = [
         'password',
+        'email_code_hash',
+        'email_code_expires_at',
+        'email_code_sent_at',
+        'email_code_attempts',
     ];
 
     /**
@@ -59,6 +63,9 @@ class User extends Authenticatable
         return [
             'password' => 'hashed',
             'must_change_password' => 'boolean',
+            'email_verified_at' => 'datetime',
+            'email_code_expires_at' => 'datetime',
+            'email_code_sent_at' => 'datetime',
         ];
     }
     
