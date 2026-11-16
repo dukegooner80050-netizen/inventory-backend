@@ -109,6 +109,12 @@ return response()->json(
             'coordReviewNote' => $request->coord_review_note,
             'coordReviewedAt' => $request->coord_reviewed_at,
             'coordReviewedBy' => $request->coord_reviewed_by ? optional(\App\Models\User::find($request->coord_reviewed_by))->full_name : null,
+            'rejectedByHead' => $request->coord_review_status === 'Rejected',
+            'appealMessage' => $request->appeal_message,
+            'appealedAt' => $request->appealed_at,
+            'appealDecision' => $request->appeal_decision,
+            'appealReply' => $request->appeal_reply,
+            'appealDecidedAt' => $request->appeal_decided_at,
             'stockHeld' => (bool) $request->stock_held,
             'releasedToStudent' => $request->released_to_student,
             'releasedStudentId' => $request->released_student_id,
@@ -1621,6 +1627,130 @@ private function notifyInventoryOfRequest($request, int $actorId): void
             $actorId
         );
     }
+}
+
+/* ---- Appeals: a requester asks once for a rejected request to be looked at again ---- */
+
+private const APPEAL_DAYS = 7;
+
+/* The requester appeals their own rejected request (once, within APPEAL_DAYS of the rejection). */
+public function appeal(HttpRequest $httpRequest, $id)
+{
+    $user = $httpRequest->user();
+    $v = $httpRequest->validate(['message' => 'required|string|min:3|max:100']);
+    $message = trim($v['message']);
+
+    return DB::transaction(function () use ($id, $user, $message) {
+        $r = Request::with('user')->where('idrequest', $id)->lockForUpdate()->first();
+        if (!$r || (int) $r->idUsers !== (int) $user->idUsers) {
+            return response()->json(['message' => 'Request not found.'], 404);
+        }
+        if ($r->status !== 'Rejected') {
+            return response()->json(['message' => 'Only rejected requests can be appealed.'], 422);
+        }
+        if ($r->appealed_at) {
+            return response()->json(['message' => 'You already appealed this request. You can make a new request instead.'], 422);
+        }
+        $since = $r->notified_at ?? $r->request_date;
+        if ($since && \Carbon\Carbon::parse($since)->addDays(self::APPEAL_DAYS)->isPast()) {
+            return response()->json(['message' => 'The ' . self::APPEAL_DAYS . '-day appeal period has passed. Please make a new request.'], 422);
+        }
+
+        $r->update(['appeal_message' => $message, 'appealed_at' => now()]);
+
+        // The one who rejected it decides: the program head for a program-head rejection, otherwise the AMO.
+        $deciders = $r->coord_review_status === 'Rejected'
+            ? $this->headIdsFor($r->user)
+            : \App\Models\User::whereRaw('LOWER(role) = ?', ['amo'])->where('status', 'active')->pluck('idUsers')->all();
+        foreach ($deciders as $uid) {
+            $this->createRequestNotification($r, (int) $uid, 'appeal', "Appeal for request #{$r->idrequest} from " . ($r->user->full_name ?? $r->user->username) . ": {$message}", (int) $user->idUsers);
+        }
+        $this->logActivity($user->idUsers, "Appealed rejected Request #{$r->idrequest}");
+
+        return response()->json(['message' => 'Your appeal was sent. You will be notified of the reply.']);
+    });
+}
+
+/* Appeals for the AMO (all) or a program head (the ones from their department that they rejected). */
+public function appeals()
+{
+    $u = request()->user();
+    $role = strtolower((string) $u->role);
+    if (!in_array($role, ['amo', 'department_head'], true)) {
+        return response()->json(['message' => 'Not allowed.'], 403);
+    }
+
+    $q = Request::with(['user', 'items.item', 'uniforms.uniformVariant.type', 'uniforms.uniformVariant.department'])
+        ->whereNotNull('appealed_at');
+    if ($role === 'department_head') {
+        $q->where('coord_review_status', 'Rejected');
+        $q = $this->scopeToHead($q, $u);
+    }
+
+    return response()->json(
+        $q->orderByRaw('appeal_decision IS NOT NULL')->orderByDesc('appealed_at')->limit(100)->get()->map(function ($r) {
+            return $this->formatWorkflowRequest($r) + [
+                'requesterName' => optional($r->user)->full_name,
+                'rejectReason' => $r->rejectReason,
+                'rejectedByHead' => $r->coord_review_status === 'Rejected',
+                'appealMessage' => $r->appeal_message,
+                'appealedAt' => $r->appealed_at,
+                'appealDecision' => $r->appeal_decision,
+                'appealReply' => $r->appeal_reply,
+                'appealDecidedAt' => $r->appeal_decided_at,
+                'appealDecidedBy' => $r->appeal_decided_by ? optional(\App\Models\User::find($r->appeal_decided_by))->full_name : null,
+            ];
+        })
+    );
+}
+
+/* reopen: the request goes back to where it was rejected. uphold: it stays rejected. A reply is required. */
+public function decideAppeal(HttpRequest $httpRequest, $id)
+{
+    $actor = $httpRequest->user();
+    $role = strtolower((string) $actor->role);
+    $v = $httpRequest->validate([
+        'decision' => 'required|in:reopen,uphold',
+        'reply' => 'required|string|min:3|max:100',
+    ]);
+    $reply = trim($v['reply']);
+
+    return DB::transaction(function () use ($id, $actor, $role, $v, $reply) {
+        $r = Request::with('user')->where('idrequest', $id)->lockForUpdate()->first();
+        if (!$r) return response()->json(['message' => 'Request not found.'], 404);
+        if (!$r->appealed_at || $r->appeal_decision || $r->status !== 'Rejected') {
+            return response()->json(['message' => 'This appeal is not waiting for a decision.'], 422);
+        }
+
+        $byHead = $r->coord_review_status === 'Rejected';
+        $allowed = $role === 'amo' || ($role === 'department_head' && $byHead && $this->headCanHandle($actor, $r->user));
+        if (!$allowed) {
+            return response()->json(['message' => 'You cannot answer this appeal.'], 403);
+        }
+
+        $changes = [
+            'appeal_decision' => $v['decision'] === 'reopen' ? 'Reopened' : 'Upheld',
+            'appeal_reply' => $reply,
+            'appeal_decided_by' => $actor->idUsers,
+            'appeal_decided_at' => now(),
+        ];
+        if ($v['decision'] === 'reopen') {
+            // Back to the step that rejected it. Nothing was reserved when it was rejected.
+            $changes['status'] = $byHead ? 'With Coordinator' : ($r->coordinator_forwarded_at ? 'With Inventory' : 'Pending');
+            if ($byHead) {
+                $changes['coord_review_status'] = null;
+            }
+        }
+        $r->update($changes);
+
+        $text = $v['decision'] === 'reopen'
+            ? "Your appeal for request #{$r->idrequest} was accepted. The request is back under review. Reply: {$reply}"
+            : "Your appeal for request #{$r->idrequest} was not accepted. The request stays rejected. Reply: {$reply}";
+        $this->createRequestNotification($r, (int) $r->idUsers, 'appeal_decision', $text, (int) $actor->idUsers);
+        $this->logActivity($actor->idUsers, ($v['decision'] === 'reopen' ? 'Accepted' : 'Declined') . " appeal for Request #{$r->idrequest}");
+
+        return response()->json(['message' => $v['decision'] === 'reopen' ? 'Appeal accepted. The request is back under review.' : 'Appeal declined. The requester has been notified.']);
+    });
 }
 
 private function createRequestNotification($request, int $recipientId, string $type, string $message, ?int $actorId = null): void

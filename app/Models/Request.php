@@ -41,6 +41,12 @@ protected $fillable = [
     'coord_reviewed_by',
     'coord_reviewed_at',
     'coord_review_note',
+    'appeal_message',
+    'appealed_at',
+    'appeal_decision',
+    'appeal_reply',
+    'appeal_decided_by',
+    'appeal_decided_at',
 ];
 
 public $timestamps = false;

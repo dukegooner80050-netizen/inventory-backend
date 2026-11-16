@@ -124,6 +124,9 @@ Route::middleware([AdminSessionTimeoutMiddleware::class, 'auth:sanctum', \App\Ht
         Route::put('/requests/{id}/coordinator-reject', [RequestController::class, 'coordinatorReject'])->middleware('role:department_head');
         Route::put('/requests/{id}/forward-to-inventory', [RequestController::class, 'forwardToInventory'])->middleware('role:department_head');
         Route::put('/requests/{id}/confirm-received', [RequestController::class, 'confirmReceived']);
+        Route::post('/requests/{id}/appeal', [RequestController::class, 'appeal'])->middleware('throttle:10,1');
+        Route::get('/requests/appeals', [RequestController::class, 'appeals'])->middleware('role:amo,department_head');
+        Route::put('/requests/{id}/appeal-decision', [RequestController::class, 'decideAppeal'])->middleware('role:amo,department_head');
         Route::get('/requests/{id}', [RequestController::class, 'show']);
 
 
