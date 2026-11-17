@@ -54,6 +54,44 @@ class SettingController extends Controller
         return response()->json(['max_items_per_request' => self::maxItemsPerRequest(request()->user()->role)]);
     }
 
+    /* ---- Allowed sign-up email domains (empty list = any email is accepted) ---- */
+
+    public static function allowedEmailDomains(): array
+    {
+        $raw = (string) optional(Setting::where('setting_key', 'allowed_email_domains')->first())->setting_value;
+        return array_values(array_filter(array_map('trim', explode(',', strtolower($raw)))));
+    }
+
+    // Public (the sign-up page shows it as a hint).
+    public function publicEmailDomains()
+    {
+        return response()->json(['domains' => self::allowedEmailDomains()]);
+    }
+
+    // AMO only (route middleware).
+    public function emailDomains()
+    {
+        return response()->json(['domains' => self::allowedEmailDomains()]);
+    }
+
+    // AMO only (route middleware).
+    public function updateEmailDomains(Request $request)
+    {
+        $v = $request->validate(['domains' => 'present|string|max:500']);
+        $list = array_values(array_unique(array_filter(array_map(
+            fn ($d) => ltrim(strtolower(trim($d)), '@'),
+            preg_split('/[\s,;]+/', $v['domains'])
+        ))));
+        foreach ($list as $d) {
+            if (!preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/', $d)) {
+                return response()->json(['message' => "\"{$d}\" is not a valid domain. Use the part after the @, for example school.edu.ph."], 422);
+            }
+        }
+        Setting::updateOrCreate(['setting_key' => 'allowed_email_domains'], ['setting_value' => implode(',', $list)]);
+        $this->logActivity(request()->user()->idUsers, $list ? 'Set allowed sign-up email domains: ' . implode(', ', $list) : 'Turned off the sign-up email domain restriction');
+        return response()->json(['domains' => $list]);
+    }
+
     // AMO only (route middleware): every role's two limits for the Settings card.
     public function requestLimits()
     {

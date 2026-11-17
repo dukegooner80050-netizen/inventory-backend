@@ -64,14 +64,20 @@ private function scopeToHead($query, $head)
 
 public function index()
 {
-$requests = Request::with([
+$me = request()->user();
+$query = Request::with([
     'user',
     'items.item',
     'uniforms.uniformVariant.type',
     'uniforms.uniformVariant.department',
     'releasedByUser',
     'forwardedByUser'
-])->get();
+]);
+// Only the AMO gets everyone's requests; every other role gets just their own.
+if (strtolower((string) $me->role) !== 'amo') {
+    $query->where('idUsers', $me->idUsers);
+}
+$requests = $query->get();
 
 // One query for every line's "waiting to be checked" quantity.
 ReturnPolicy::preloadPending($requests->flatMap(fn ($r) => $r->items->pluck('idrequestItem')));

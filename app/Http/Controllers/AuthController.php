@@ -65,7 +65,7 @@ class AuthController extends Controller
             'email' => ['required', 'email:rfc', 'max:120', \Illuminate\Validation\Rule::unique('users', 'email')->where($taken)],
             'password' => 'required|min:6',
             // What the person says they are; the AMO still decides the real role when approving.
-            'employee_id' => ['required', 'string', 'max:30', 'regex:/^[A-Za-z0-9-]+$/'],
+            'employee_id' => ['nullable', 'string', 'max:30', 'regex:/^[A-Za-z0-9-]+$/'],
             'requested_role' => 'required|in:department_head,admin,instructor,cashier',
             'requested_iddept' => 'nullable|required_if:requested_role,instructor,department_head|integer|exists:dept,iddept',
         ], [
@@ -73,6 +73,19 @@ class AuthController extends Controller
         ]);
 
         $email = strtolower(trim($validated['email']));
+
+        // Optional restriction set by the AMO: only these email domains may register.
+        $domains = \App\Http\Controllers\SettingController::allowedEmailDomains();
+        if ($domains) {
+            $host = substr(strrchr($email, '@') ?: '', 1);
+            $ok = collect($domains)->contains(fn ($d) => $host === $d || str_ends_with($host, '.' . $d));
+            if (!$ok) {
+                return response()->json([
+                    'message' => 'Please use your school email address (' . implode(' or ', array_map(fn ($d) => '@' . $d, $domains)) . ').',
+                    'errors' => ['email' => ['Please use your school email address.']],
+                ], 422);
+            }
+        }
 
         // Clear old unfinished sign-ups (same username/email, or older than a day).
         User::where('status', 'unverified')->where(function ($q) use ($validated, $email) {
@@ -92,7 +105,7 @@ class AuthController extends Controller
         // (status is not mass assignable, so it is set explicitly.)
         $user->status = 'unverified';
         $user->email = $email;
-        $user->employee_id = $validated['employee_id'];
+        $user->employee_id = $validated['employee_id'] ?? null;
         $user->requested_role = $validated['requested_role'];
         $user->requested_iddept = in_array($validated['requested_role'], ['instructor', 'department_head'], true)
             ? ($validated['requested_iddept'] ?? null)

@@ -42,6 +42,8 @@ Route::post('/register/resend', [AuthController::class, 'resendCode'])
     ->middleware('throttle:5,1');
 Route::get('/public/departments', [AuthController::class, 'departments'])
     ->middleware('throttle:30,1');
+Route::get('/public/email-domains', [SettingController::class, 'publicEmailDomains'])
+    ->middleware('throttle:30,1');
 // Rate limited (5 per minute per username + IP) against password guessing.
 Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:login');
@@ -356,6 +358,8 @@ Route::middleware('role:amo,department_head,admin,instructor,cashier')->group(fu
 
         Route::get('/settings/request-limits', [SettingController::class, 'requestLimits']);
         Route::put('/settings/request-limits', [SettingController::class, 'updateRequestLimits']);
+        Route::get('/settings/email-domains', [SettingController::class, 'emailDomains']);
+        Route::put('/settings/email-domains', [SettingController::class, 'updateEmailDomains']);
         Route::put('/settings/student-id-length', [SettingController::class, 'updateStudentIdLength']);
         Route::put('/settings/return-periods', [SettingController::class, 'updateReturnPeriods']);
         Route::get('/settings/stock-levels', [SettingController::class, 'stockLevels']);
