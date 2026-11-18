@@ -66,8 +66,8 @@ class AuthController extends Controller
             'password' => 'required|min:6',
             // What the person says they are; the AMO still decides the real role when approving.
             'employee_id' => ['nullable', 'string', 'max:30', 'regex:/^[A-Za-z0-9-]+$/'],
-            'requested_role' => 'required|in:department_head,admin,instructor,cashier',
-            'requested_iddept' => 'nullable|required_if:requested_role,instructor,department_head|integer|exists:dept,iddept',
+            'requested_role' => 'required|in:department_head,admin,instructor,cashier,registrar_staff',
+            'requested_iddept' => 'nullable|required_if:requested_role,instructor,department_head,dean|integer|exists:dept,iddept',
         ], [
             'email.unique' => 'This email is already used by another account.',
         ]);
@@ -107,7 +107,7 @@ class AuthController extends Controller
         $user->email = $email;
         $user->employee_id = $validated['employee_id'] ?? null;
         $user->requested_role = $validated['requested_role'];
-        $user->requested_iddept = in_array($validated['requested_role'], ['instructor', 'department_head'], true)
+        $user->requested_iddept = in_array($validated['requested_role'], ['instructor', 'department_head', 'dean'], true)
             ? ($validated['requested_iddept'] ?? null)
             : null;
         $user->save();
