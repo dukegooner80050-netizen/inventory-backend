@@ -415,8 +415,8 @@ if (
         ], 422);
     }
 
-    /* An instructor may skip the program head but must give a reason, which is saved. */
-    $sendDirect = strtolower((string) $role) === 'instructor' && !empty($validated['send_direct']);
+    /* An instructor or program head may skip the academic coordinator but must give a reason, which is saved. */
+    $sendDirect = in_array(strtolower((string) $role), ['instructor', 'department_head'], true) && !empty($validated['send_direct']);
     $directReason = trim((string) ($validated['direct_reason'] ?? ''));
     if ($sendDirect && mb_strlen($directReason) < 3) {
         return response()->json([
@@ -488,7 +488,7 @@ if (
         // Instructors and program heads go through the academic coordinator. With no active coordinator they go straight to the AMO.
         $roleNow = strtolower((string) request()->user()->role);
         $hasCoordinator = !empty($this->coordinatorsFor(request()->user()));
-        $needsReview = $hasCoordinator && (($roleNow === 'instructor' && !$sendDirect) || $roleNow === 'department_head');
+        $needsReview = $hasCoordinator && !$sendDirect && in_array($roleNow, ['instructor', 'department_head'], true);
 
         // "Request again": each rejected request can be used for it only once.
         if (!empty($validated['again_of'])) {
