@@ -16,7 +16,7 @@ class SettingController extends Controller
     const DEFAULT_MAX_ITEMS_PER_REQUEST = 10;
 
     // Roles that have a request-size limit (the AMO is exempt).
-    const MAX_ITEMS_ROLES = ['department_head', 'dean', 'academic_coordinator', 'admin', 'instructor', 'cashier', 'registrar_staff'];
+    const MAX_ITEMS_ROLES = ['department_head', 'academic_coordinator', 'admin', 'instructor', 'cashier'];
 
     // Most different items one request may hold for a role (the AMO can change it per role).
     public static function maxItemsPerRequest(?string $role = null): int

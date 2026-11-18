@@ -94,7 +94,7 @@ Route::middleware([AdminSessionTimeoutMiddleware::class, 'auth:sanctum', \App\Ht
     | Inventory Viewing
     |--------------------------------------------------------------------------
     |
-    | Admin, Dean, and Cashier can view inventory.
+    | Admin and Cashier can view inventory.
     |
     */
 
@@ -109,7 +109,7 @@ Route::middleware([AdminSessionTimeoutMiddleware::class, 'auth:sanctum', \App\Ht
     | Request Viewing
     |--------------------------------------------------------------------------
     |
-    | Admin, Dean, and Cashier can view requests.
+    | Admin and Cashier can view requests.
     |
     */
 
@@ -119,16 +119,16 @@ Route::middleware([AdminSessionTimeoutMiddleware::class, 'auth:sanctum', \App\Ht
         Route::get('/requests/overdue/mine', [RequestController::class, 'myOverdue']);
         Route::get('/request-notifications', [RequestController::class, 'notifications']);
         Route::post('/request-notifications/read', [RequestController::class, 'readNotifications']);
-        Route::get('/requests/coordinator-queue', [RequestController::class, 'coordinatorQueue'])->middleware('role:department_head,dean,academic_coordinator');
-        Route::get('/requests/coordinator-history', [RequestController::class, 'coordinatorHistory'])->middleware('role:department_head,dean,academic_coordinator');
-        Route::get('/requests/direct-queue', [RequestController::class, 'directQueue'])->middleware('role:department_head,dean,academic_coordinator');
-        Route::put('/requests/{id}/coordinator-review', [RequestController::class, 'coordinatorReview'])->middleware('role:department_head,dean,academic_coordinator');
-        Route::put('/requests/{id}/coordinator-reject', [RequestController::class, 'coordinatorReject'])->middleware('role:department_head,dean,academic_coordinator');
-        Route::put('/requests/{id}/forward-to-inventory', [RequestController::class, 'forwardToInventory'])->middleware('role:department_head,dean,academic_coordinator');
+        Route::get('/requests/coordinator-queue', [RequestController::class, 'coordinatorQueue'])->middleware('role:academic_coordinator');
+        Route::get('/requests/coordinator-history', [RequestController::class, 'coordinatorHistory'])->middleware('role:academic_coordinator');
+        Route::get('/requests/direct-queue', [RequestController::class, 'directQueue'])->middleware('role:academic_coordinator');
+        Route::put('/requests/{id}/coordinator-review', [RequestController::class, 'coordinatorReview'])->middleware('role:academic_coordinator');
+        Route::put('/requests/{id}/coordinator-reject', [RequestController::class, 'coordinatorReject'])->middleware('role:academic_coordinator');
+        Route::put('/requests/{id}/forward-to-inventory', [RequestController::class, 'forwardToInventory'])->middleware('role:academic_coordinator');
         Route::put('/requests/{id}/confirm-received', [RequestController::class, 'confirmReceived']);
         Route::post('/requests/{id}/appeal', [RequestController::class, 'appeal'])->middleware('throttle:10,1');
-        Route::get('/requests/appeals', [RequestController::class, 'appeals'])->middleware('role:amo,department_head,dean');
-        Route::put('/requests/{id}/appeal-decision', [RequestController::class, 'decideAppeal'])->middleware('role:amo,department_head,dean');
+        Route::get('/requests/appeals', [RequestController::class, 'appeals'])->middleware('role:amo,academic_coordinator');
+        Route::put('/requests/{id}/appeal-decision', [RequestController::class, 'decideAppeal'])->middleware('role:amo,academic_coordinator');
         Route::get('/requests/{id}', [RequestController::class, 'show']);
 
 
@@ -145,7 +145,7 @@ Route::middleware([AdminSessionTimeoutMiddleware::class, 'auth:sanctum', \App\Ht
     |
     */
 
-    Route::middleware('role:amo,department_head,dean,academic_coordinator,admin,instructor,cashier,registrar_staff')->group(function () {
+    Route::middleware('role:amo,department_head,academic_coordinator,admin,instructor,cashier')->group(function () {
 
         Route::post('/requests', [RequestController::class, 'store']);
 
@@ -171,11 +171,11 @@ Route::middleware([AdminSessionTimeoutMiddleware::class, 'auth:sanctum', \App\Ht
 | Uniform Viewing
 |--------------------------------------------------------------------------
 |
-| Admin, Dean, and Cashier can view uniforms.
+| Admin and Cashier can view uniforms.
 |
 */
 
-Route::middleware('role:amo,department_head,dean,academic_coordinator,admin,instructor,cashier,registrar_staff')->group(function () {
+Route::middleware('role:amo,department_head,academic_coordinator,admin,instructor,cashier')->group(function () {
 
     Route::get('/uniformtypes', [UniformTypeController::class, 'index']);
     Route::get('/uniformtypes/{id}', [UniformTypeController::class, 'show']);
@@ -394,7 +394,7 @@ Route::middleware('role:amo,department_head,dean,academic_coordinator,admin,inst
     |
     */
 
-    Route::middleware('role:amo,department_head,dean,academic_coordinator,admin,instructor,cashier,registrar_staff')->group(function () {
+    Route::middleware('role:amo,department_head,academic_coordinator,admin,instructor,cashier')->group(function () {
 
         Route::get('/dashboard', [DashboardController::class, 'index']);
 

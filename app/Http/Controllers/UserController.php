@@ -36,7 +36,7 @@ public function store(Request $request)
         'full_name' => 'required|string|max:255',
         'username'  => 'required|string|max:255|unique:users,username',
         'password'  => 'required|min:6',
-        'role'      => 'required|in:amo,department_head,dean,academic_coordinator,admin,instructor,cashier,registrar_staff',
+        'role'      => 'required|in:amo,department_head,academic_coordinator,admin,instructor,cashier',
     ]);
 
     $user = User::create([
@@ -71,7 +71,7 @@ public function update(Request $request, $id)
     $validated = $request->validate([
         'full_name' => 'required|string|max:255',
         'username'  => 'required|string|max:255|unique:users,username,' . $id . ',idUsers',
-        'role'      => 'required|in:amo,department_head,dean,academic_coordinator,admin,instructor,cashier,registrar_staff',
+        'role'      => 'required|in:amo,department_head,academic_coordinator,admin,instructor,cashier',
     ]);
 
     $user->update($validated);
@@ -171,7 +171,7 @@ public function setDepartment(Request $request, $id)
     if (!$user) {
         return response()->json(['message' => 'User not found.'], 404);
     }
-    if (!in_array(strtolower((string) $user->role), ['instructor', 'department_head', 'dean', 'academic_coordinator'], true)) {
+    if (!in_array(strtolower((string) $user->role), ['instructor', 'department_head', 'academic_coordinator'], true)) {
         return response()->json(['message' => 'Only instructors and program heads have a department.'], 422);
     }
     $validated = $request->validate([

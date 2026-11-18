@@ -29,7 +29,7 @@ private static function deptNameFor($iddept)
     return $cache[$iddept];
 }
 
-/** Active academic coordinators of the requester's department (never the requester). When there are any, they replace the program head step. */
+/** Active academic coordinators of the requester's department (never the requester). They are the only reviewers: program heads no longer review requests. */
 private function coordinatorsFor($requester)
 {
     $dept = optional($requester)->iddept;
@@ -41,18 +41,10 @@ private function coordinatorsFor($requester)
         ->pluck('idUsers')->all();
 }
 
-/** idUsers of the reviewers who handle this requester's department: academic coordinators if the department has any, else its program heads. */
+/** idUsers of the academic coordinators who review this requester's department (none if the department has no coordinator). */
 private function headIdsFor($requester)
 {
-    $coords = $this->coordinatorsFor($requester);
-    if ($coords) return $coords;
-    $heads = \App\Models\User::whereRaw("LOWER(role) IN ('department_head', 'dean')")->get(['idUsers', 'iddept']);
-    $dept = optional($requester)->iddept;
-    if (!$dept) return $heads->pluck('idUsers')->all();               // requester has no department: all heads
-    $match = $heads->filter(fn ($h) => !$h->iddept || (int) $h->iddept === (int) $dept);
-    $hasOwnHead = $heads->contains(fn ($h) => (int) $h->iddept === (int) $dept);
-    if (!$hasOwnHead) return $heads->pluck('idUsers')->all();         // department has no head: don't strand the request
-    return $match->pluck('idUsers')->all();
+    return $this->coordinatorsFor($requester);
 }
 
 /** May this program head review/forward this requester's request? */
@@ -61,28 +53,11 @@ private function headCanHandle($head, $requester)
     return in_array((int) $head->idUsers, array_map('intval', $this->headIdsFor($requester)), true);
 }
 
-/** Limit a Request query to the requesters this head handles. */
-private function scopeToHead($query, $head)
+/** Limit a Request query to the requesters this academic coordinator handles (their department). */
+private function scopeToHead($query, $coordinator)
 {
-    if (strtolower((string) $head->role) === 'academic_coordinator') {
-        if (!$head->iddept) return $query;                             // coordinator with no department sees all
-        return $query->whereHas('user', fn ($u) => $u->where('iddept', $head->iddept));
-    }
-    if (!$head->iddept) return $query;                                 // head with no department sees all
-    $headDepts = \App\Models\User::whereRaw("LOWER(role) IN ('department_head', 'dean')")
-        ->whereNotNull('iddept')->select('iddept');
-    // Departments that have an academic coordinator: the coordinator reviews them, not the program head.
-    $coordDepts = \App\Models\User::whereRaw('LOWER(role) = ?', ['academic_coordinator'])
-        ->where('status', 'active')->whereNotNull('iddept')->select('iddept');
-    return $query->whereHas('user', function ($u) use ($head, $headDepts, $coordDepts) {
-        $u->where(function ($w) use ($head, $headDepts) {
-            $w->whereNull('iddept')
-              ->orWhere('iddept', $head->iddept)
-              ->orWhereNotIn('iddept', $headDepts);
-        })->where(function ($w) use ($coordDepts) {
-            $w->whereNull('iddept')->orWhereNotIn('iddept', $coordDepts);
-        });
-    });
+    if (!$coordinator->iddept) return $query;                          // coordinator with no department sees all
+    return $query->whereHas('user', fn ($u) => $u->where('iddept', $coordinator->iddept));
 }
 
 public function index()
@@ -513,10 +488,10 @@ if (
     }
 
     DB::transaction(function () use ($validated, $idUsers, $isCashierUniformRequest, $sendDirect, $directReason, &$newRequest) {
-        // Instructors go through their department's reviewer. Program heads and deans do too, but only when their department has an academic coordinator.
+        // Instructors and program heads go through their department's academic coordinator. A department with no coordinator goes straight to the AMO.
         $roleNow = strtolower((string) request()->user()->role);
-        $needsReview = ($roleNow === 'instructor' && !$sendDirect)
-            || (in_array($roleNow, ['department_head', 'dean'], true) && !empty($this->coordinatorsFor(request()->user())));
+        $hasCoordinator = !empty($this->coordinatorsFor(request()->user()));
+        $needsReview = $hasCoordinator && (($roleNow === 'instructor' && !$sendDirect) || $roleNow === 'department_head');
 
         // "Request again": each rejected request can be used for it only once.
         if (!empty($validated['again_of'])) {
@@ -533,7 +508,7 @@ if (
             'approved_by' => null,
             // Server time, with the time of day (the browser used to send only a date).
             'request_date' => now(),
-            /* Instructors (and heads/deans when an academic coordinator exists) are reviewed first; everyone else goes straight to the AMO. */
+            /* Instructors and program heads are reviewed by their academic coordinator first (if the department has one); everyone else goes straight to the AMO. */
             'status' => $needsReview ? 'With Coordinator' : 'With Inventory',
             'direct_to_amo_reason' => $sendDirect ? mb_substr($directReason, 0, 255) : null,
             'location' => $validated['location'],
@@ -959,8 +934,8 @@ return response()->json([
 public function coordinatorQueue()
 {
     $user = request()->user();
-    if (!in_array(strtolower((string) $user->role), ['department_head', 'dean', 'academic_coordinator'], true)) {
-        return response()->json(['message' => 'Only the Dean/Academic Coordinator can forward requests.'], 403);
+    if (!in_array(strtolower((string) $user->role), ['academic_coordinator'], true)) {
+        return response()->json(['message' => 'Only an Academic Coordinator can forward requests.'], 403);
     }
     return response()->json($this->scopeToHead(Request::with(['user', 'items.item', 'uniforms.uniformVariant.type', 'uniforms.uniformVariant.department']), $user)
         ->where('status', 'With Coordinator')->orderBy('request_date')->get()->map(fn ($r) => $this->formatWorkflowRequest($r)));
@@ -970,8 +945,8 @@ public function coordinatorQueue()
 public function directQueue()
 {
     $user = request()->user();
-    if (!in_array(strtolower((string) $user->role), ['department_head', 'dean', 'academic_coordinator'], true)) {
-        return response()->json(['message' => 'Only the Dean/Academic Coordinator can review these requests.'], 403);
+    if (!in_array(strtolower((string) $user->role), ['academic_coordinator'], true)) {
+        return response()->json(['message' => 'Only an Academic Coordinator can review these requests.'], 403);
     }
     return response()->json($this->scopeToHead(Request::with(['user', 'items.item', 'uniforms.uniformVariant.type', 'uniforms.uniformVariant.department']), $user)
         ->whereNotNull('direct_to_amo_reason')->orderByDesc('request_date')->limit(100)->get()
@@ -988,8 +963,8 @@ public function directQueue()
 public function coordinatorHistory(HttpRequest $httpRequest)
 {
     $user = $httpRequest->user();
-    if (!in_array(strtolower((string) $user->role), ['department_head', 'dean', 'academic_coordinator'], true)) {
-        return response()->json(['message' => 'Only the Dean/Academic Coordinator can view this.'], 403);
+    if (!in_array(strtolower((string) $user->role), ['academic_coordinator'], true)) {
+        return response()->json(['message' => 'Only an Academic Coordinator can view this.'], 403);
     }
     $v = $httpRequest->validate([
         'from' => 'nullable|date',
@@ -998,7 +973,7 @@ public function coordinatorHistory(HttpRequest $httpRequest)
         'source' => 'nullable|in:all,review,direct',
     ]);
 
-    $instructors = \App\Models\User::whereRaw("LOWER(role) IN ('instructor', 'department_head', 'dean')")
+    $instructors = \App\Models\User::whereRaw("LOWER(role) IN ('instructor', 'department_head')")
         ->where('idUsers', '!=', $user->idUsers)
         ->when($user->iddept, fn ($q) => $q->where('iddept', $user->iddept))
         ->orderBy('full_name')->get(['idUsers', 'full_name', 'username']);
@@ -1038,8 +1013,8 @@ public function coordinatorHistory(HttpRequest $httpRequest)
 public function coordinatorReview(HttpRequest $httpRequest, $id)
 {
     $actor = $httpRequest->user();
-    if (!in_array(strtolower((string) $actor->role), ['department_head', 'dean', 'academic_coordinator'], true)) {
-        return response()->json(['message' => 'Only the Dean/Academic Coordinator can review these requests.'], 403);
+    if (!in_array(strtolower((string) $actor->role), ['academic_coordinator'], true)) {
+        return response()->json(['message' => 'Only an Academic Coordinator can review these requests.'], 403);
     }
     $validated = $httpRequest->validate([
         'action' => 'required|in:acknowledge,flag',
@@ -1082,8 +1057,8 @@ public function coordinatorReview(HttpRequest $httpRequest, $id)
 public function coordinatorReject(HttpRequest $httpRequest, $id)
 {
     $actor = $httpRequest->user();
-    if (!in_array(strtolower((string) $actor->role), ['department_head', 'dean', 'academic_coordinator'], true)) {
-        return response()->json(['message' => 'Only the Dean/Academic Coordinator can return these requests.'], 403);
+    if (!in_array(strtolower((string) $actor->role), ['academic_coordinator'], true)) {
+        return response()->json(['message' => 'Only an Academic Coordinator can return these requests.'], 403);
     }
     $validated = $httpRequest->validate(['reason' => 'required|string|min:3|max:100']);
     $reason = trim($validated['reason']);
@@ -1118,8 +1093,8 @@ public function forwardToInventory(HttpRequest $httpRequest, $id)
     $actor = $httpRequest->user();
     $httpRequest->validate(['note' => 'nullable|string|max:100']);
     $note = trim((string) ($httpRequest->input('note') ?? ''));
-    if (!in_array(strtolower((string) $actor->role), ['department_head', 'dean', 'academic_coordinator'], true)) {
-        return response()->json(['message' => 'Only the Dean/Academic Coordinator can forward requests.'], 403);
+    if (!in_array(strtolower((string) $actor->role), ['academic_coordinator'], true)) {
+        return response()->json(['message' => 'Only an Academic Coordinator can forward requests.'], 403);
     }
     return DB::transaction(function () use ($id, $actor, $note) {
         $r = Request::where('idrequest', $id)->lockForUpdate()->first();
@@ -1726,13 +1701,13 @@ public function appeals()
 {
     $u = request()->user();
     $role = strtolower((string) $u->role);
-    if (!in_array($role, ['amo', 'department_head', 'dean'], true)) {
+    if (!in_array($role, ['amo', 'academic_coordinator'], true)) {
         return response()->json(['message' => 'Not allowed.'], 403);
     }
 
     $q = Request::with(['user', 'items.item', 'uniforms.uniformVariant.type', 'uniforms.uniformVariant.department'])
         ->whereNotNull('appealed_at');
-    if (in_array($role, ['department_head', 'dean', 'academic_coordinator'], true)) {
+    if (in_array($role, ['academic_coordinator'], true)) {
         $q->where('coord_review_status', 'Rejected');
         $q = $this->scopeToHead($q, $u);
     }
@@ -1773,7 +1748,7 @@ public function decideAppeal(HttpRequest $httpRequest, $id)
         }
 
         $byHead = $r->coord_review_status === 'Rejected';
-        $allowed = $role === 'amo' || (in_array($role, ['department_head', 'dean', 'academic_coordinator'], true) && $byHead && $this->headCanHandle($actor, $r->user));
+        $allowed = $role === 'amo' || (in_array($role, ['academic_coordinator'], true) && $byHead && $this->headCanHandle($actor, $r->user));
         if (!$allowed) {
             return response()->json(['message' => 'You cannot answer this appeal.'], 403);
         }

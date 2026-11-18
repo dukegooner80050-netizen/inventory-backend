@@ -39,7 +39,7 @@ class AccountRequestController extends Controller
     public function approve(Request $request, $id)
     {
         $validated = $request->validate([
-            'role' => 'required|in:admin,department_head,dean,academic_coordinator,instructor,cashier,registrar_staff',
+            'role' => 'required|in:admin,department_head,academic_coordinator,instructor,cashier',
             'iddept' => 'nullable|integer|exists:dept,iddept',
         ]);
 
@@ -56,7 +56,7 @@ class AccountRequestController extends Controller
 
             $user->role = $validated['role'];
             // Only instructors and program heads have a department.
-            $user->iddept = in_array($validated['role'], ['instructor', 'department_head', 'dean', 'academic_coordinator'], true)
+            $user->iddept = in_array($validated['role'], ['instructor', 'department_head', 'academic_coordinator'], true)
                 ? ($validated['iddept'] ?? null)
                 : null;
             $user->status = 'active';
