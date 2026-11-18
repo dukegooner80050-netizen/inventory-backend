@@ -13,6 +13,20 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    /** The one active Academic Coordinator (other than $exceptId), or null. There may be only one at a time. */
+    public static function activeAcademicCoordinator($exceptId = null)
+    {
+        return static::whereRaw('LOWER(role) = ?', ['academic_coordinator'])
+            ->where('status', 'active')
+            ->when($exceptId, fn ($q) => $q->where('idUsers', '!=', $exceptId))
+            ->first();
+    }
+
+    public static function coordinatorConflictMessage($other): string
+    {
+        return "There is already an active Academic Coordinator ({$other->full_name}). Only one can be active, so deactivate them or change their role first.";
+    }
+
     /**
      * Table name
      */

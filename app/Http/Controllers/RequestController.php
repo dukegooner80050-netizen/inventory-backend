@@ -29,19 +29,17 @@ private static function deptNameFor($iddept)
     return $cache[$iddept];
 }
 
-/** Active academic coordinators of the requester's department (never the requester). They are the only reviewers: program heads no longer review requests. */
+/** The active Academic Coordinator (there is only one, for every department), unless the requester is that person. Only requesters with a department (course) are reviewed. */
 private function coordinatorsFor($requester)
 {
-    $dept = optional($requester)->iddept;
-    if (!$dept) return [];
+    if (!optional($requester)->iddept) return [];
     return \App\Models\User::whereRaw('LOWER(role) = ?', ['academic_coordinator'])
         ->where('status', 'active')
-        ->where('iddept', $dept)
         ->where('idUsers', '!=', optional($requester)->idUsers)
         ->pluck('idUsers')->all();
 }
 
-/** idUsers of the academic coordinators who review this requester's department (none if the department has no coordinator). */
+/** idUsers of the academic coordinator who reviews this requester (empty if there is none). */
 private function headIdsFor($requester)
 {
     return $this->coordinatorsFor($requester);
@@ -53,11 +51,10 @@ private function headCanHandle($head, $requester)
     return in_array((int) $head->idUsers, array_map('intval', $this->headIdsFor($requester)), true);
 }
 
-/** Limit a Request query to the requesters this academic coordinator handles (their department). */
+/** The academic coordinator reviews every department, so nothing is filtered out. */
 private function scopeToHead($query, $coordinator)
 {
-    if (!$coordinator->iddept) return $query;                          // coordinator with no department sees all
-    return $query->whereHas('user', fn ($u) => $u->where('iddept', $coordinator->iddept));
+    return $query;
 }
 
 public function index()
@@ -488,7 +485,7 @@ if (
     }
 
     DB::transaction(function () use ($validated, $idUsers, $isCashierUniformRequest, $sendDirect, $directReason, &$newRequest) {
-        // Instructors and program heads go through their department's academic coordinator. A department with no coordinator goes straight to the AMO.
+        // Instructors and program heads go through the academic coordinator. With no active coordinator they go straight to the AMO.
         $roleNow = strtolower((string) request()->user()->role);
         $hasCoordinator = !empty($this->coordinatorsFor(request()->user()));
         $needsReview = $hasCoordinator && (($roleNow === 'instructor' && !$sendDirect) || $roleNow === 'department_head');
@@ -975,7 +972,6 @@ public function coordinatorHistory(HttpRequest $httpRequest)
 
     $instructors = \App\Models\User::whereRaw("LOWER(role) IN ('instructor', 'department_head')")
         ->where('idUsers', '!=', $user->idUsers)
-        ->when($user->iddept, fn ($q) => $q->where('iddept', $user->iddept))
         ->orderBy('full_name')->get(['idUsers', 'full_name', 'username']);
     $ids = $instructors->pluck('idUsers')->all();
 
@@ -998,7 +994,7 @@ public function coordinatorHistory(HttpRequest $httpRequest)
     }
 
     return response()->json([
-        'scopedToDepartment' => (bool) $user->iddept,
+        'scopedToDepartment' => false,
         'instructors' => $instructors,
         'summary' => array_values($summary),
         'requests' => $rows->map(fn ($r) => array_merge($this->formatWorkflowRequest($r), [

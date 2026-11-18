@@ -54,9 +54,13 @@ class AccountRequestController extends Controller
                 ], 404);
             }
 
+            if ($validated['role'] === 'academic_coordinator' && ($other = User::activeAcademicCoordinator($user->idUsers))) {
+                return response()->json(['message' => User::coordinatorConflictMessage($other)], 422);
+            }
+
             $user->role = $validated['role'];
             // Only instructors and program heads have a department.
-            $user->iddept = in_array($validated['role'], ['instructor', 'department_head', 'academic_coordinator'], true)
+            $user->iddept = in_array($validated['role'], ['instructor', 'department_head'], true)
                 ? ($validated['iddept'] ?? null)
                 : null;
             $user->status = 'active';

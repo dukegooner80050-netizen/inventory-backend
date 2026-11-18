@@ -39,6 +39,10 @@ public function store(Request $request)
         'role'      => 'required|in:amo,department_head,academic_coordinator,admin,instructor,cashier',
     ]);
 
+    if ($validated['role'] === 'academic_coordinator' && ($other = User::activeAcademicCoordinator())) {
+        return response()->json(['message' => User::coordinatorConflictMessage($other)], 422);
+    }
+
     $user = User::create([
         'full_name' => $validated['full_name'],
         'username'  => $validated['username'],
@@ -73,6 +77,11 @@ public function update(Request $request, $id)
         'username'  => 'required|string|max:255|unique:users,username,' . $id . ',idUsers',
         'role'      => 'required|in:amo,department_head,academic_coordinator,admin,instructor,cashier',
     ]);
+
+    if ($validated['role'] === 'academic_coordinator' && ($user->status ?? 'active') === 'active'
+        && ($other = User::activeAcademicCoordinator($user->idUsers))) {
+        return response()->json(['message' => User::coordinatorConflictMessage($other)], 422);
+    }
 
     $user->update($validated);
     $this->logActivity(
@@ -171,7 +180,7 @@ public function setDepartment(Request $request, $id)
     if (!$user) {
         return response()->json(['message' => 'User not found.'], 404);
     }
-    if (!in_array(strtolower((string) $user->role), ['instructor', 'department_head', 'academic_coordinator'], true)) {
+    if (!in_array(strtolower((string) $user->role), ['instructor', 'department_head'], true)) {
         return response()->json(['message' => 'Only instructors and program heads have a department.'], 422);
     }
     $validated = $request->validate([
@@ -203,6 +212,11 @@ public function setStatus(Request $request, $id)
     if ($new === 'inactive' && strtolower((string) $user->role) === 'amo'
         && User::whereRaw('LOWER(role) = ?', ['amo'])->where('status', 'active')->where('idUsers', '!=', $user->idUsers)->doesntExist()) {
         return response()->json(['message' => 'This is the last active AMO account, so it cannot be deactivated.'], 422);
+    }
+
+    if ($new === 'active' && strtolower((string) $user->role) === 'academic_coordinator'
+        && ($other = User::activeAcademicCoordinator($user->idUsers))) {
+        return response()->json(['message' => User::coordinatorConflictMessage($other)], 422);
     }
 
     $user->status = $new;
