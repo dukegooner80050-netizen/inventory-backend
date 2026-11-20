@@ -70,14 +70,6 @@ Route::middleware([AdminSessionTimeoutMiddleware::class, 'auth:sanctum', \App\Ht
     |--------------------------------------------------------------------------
     */
 
-    Route::get('/test-auth', function (Request $request) {
-        return response()->json([
-            'authenticated' => true,
-            'user' => $request->user(),
-        ]);
-    });
-
-
     /*
     |--------------------------------------------------------------------------
     | Current User
@@ -394,7 +386,8 @@ Route::middleware('role:amo,department_head,academic_coordinator,admin,instructo
     |
     */
 
-    Route::middleware('role:amo,department_head,academic_coordinator,admin,instructor,cashier')->group(function () {
+    // The page does not call this; it returns recent requests and logs of everyone, so it is AMO only.
+    Route::middleware('role:amo')->group(function () {
 
         Route::get('/dashboard', [DashboardController::class, 'index']);
 
