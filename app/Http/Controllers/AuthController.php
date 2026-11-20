@@ -13,6 +13,13 @@ use Carbon\Carbon;
 class AuthController extends Controller
 {
     // ---- Sign-up with email verification -------------------------------------------------
+    private const ROLE_NAMES = [
+        'instructor' => 'Instructor',
+        'department_head' => 'Program Head',
+        'academic_coordinator' => 'Academic Coordinator',
+        'admin' => 'Admin',
+        'cashier' => 'Cashier',
+    ];
     private const CODE_MINUTES = 10;   // how long a code works
     private const CODE_TRIES = 5;      // wrong tries before a new code is needed
     private const RESEND_SECONDS = 60; // wait between emails
@@ -165,6 +172,12 @@ class AuthController extends Controller
         $user->email_code_attempts = 0;
         $user->save();
 
+        \App\Models\Log::create([
+            'idUsers' => $user->idUsers,
+            'activity_description' => "Signed up and verified email (wants to be " . (self::ROLE_NAMES[$user->requested_role] ?? 'Instructor') . ')',
+            'timestamp' => now()->toDateTimeString(),
+        ]);
+
         return response()->json([
             'message' => 'Your email is verified. Your account is waiting for administrator approval.',
             'status' => 'pending',
@@ -301,6 +314,12 @@ if ($token === null) {
     ], 429);
 }
 
+\App\Models\Log::create([
+    'idUsers' => $user->idUsers,
+    'activity_description' => 'Logged in',
+    'timestamp' => now()->toDateTimeString(),
+]);
+
 return response()->json([
     'message' => 'Login successful.',
     'user' => $user,
@@ -355,6 +374,12 @@ public function changePassword(Request $request)
 
 public function logout(Request $request)
 {
+    \App\Models\Log::create([
+        'idUsers' => $request->user()->idUsers,
+        'activity_description' => $request->boolean('idle') ? 'Logged out (idle timeout)' : 'Logged out',
+        'timestamp' => now()->toDateTimeString(),
+    ]);
+
     $request->user()->currentAccessToken()->delete();
 
     return response()->json([

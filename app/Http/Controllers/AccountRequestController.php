@@ -68,7 +68,7 @@ class AccountRequestController extends Controller
 
             $this->logActivity(
                 request()->user()->idUsers,
-                "Approved account request for '{$user->full_name}' as " . ucfirst($validated['role'])
+                "Approved account request for '{$user->full_name}' as " . (['department_head' => 'Program Head', 'academic_coordinator' => 'Academic Coordinator'][$validated['role']] ?? ucfirst($validated['role']))
             );
 
             return response()->json([
@@ -97,6 +97,8 @@ class AccountRequestController extends Controller
             $name = $user->full_name;
             $username = $user->username;
 
+            // The sign-up line logged under this account would block the delete; the decline below is kept.
+            \App\Models\Log::where('idUsers', $user->idUsers)->delete();
             $user->delete();
 
             $this->logActivity(
